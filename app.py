@@ -12,7 +12,8 @@ from database.db import (
     init_db, get_all_members, add_member, mark_attendance,
     get_attendance_today, get_attendance_stats, get_next_label,
     delete_member, get_attendance_history, get_member_by_label,
-    get_attendance_by_date_range, bulk_add_members
+    get_attendance_by_date_range, bulk_add_members,
+    get_attendance_by_date, get_member_attendance_on_date
 )
 from models.face_engine import (
     recognize_face, train_model, get_annotated_image,
@@ -260,6 +261,58 @@ def api_recognize():
 def api_attendance_today():
     records = get_attendance_today()
     return jsonify({'success': True, 'records': records})
+
+@app.route('/api/attendance/by-date', methods=['GET'])
+def api_attendance_by_date():
+    """
+    Get attendance for ALL members on a specific date.
+    Query params: date (YYYY-MM-DD), defaults to today.
+    """
+    try:
+        date_str = request.args.get('date', '').strip()
+        target_date = date.fromisoformat(date_str) if date_str else date.today()
+
+        present, absent = get_attendance_by_date(target_date.isoformat())
+
+        return jsonify({
+            'success': True,
+            'date': target_date.isoformat(),
+            'present': present,
+            'absent': absent,
+            'present_count': len(present),
+            'absent_count': len(absent)
+        })
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/attendance/member/<int:member_id>', methods=['GET'])
+def api_member_attendance_on_date(member_id):
+    """
+    Check a specific member's attendance status on a specific date.
+    Query params: date (YYYY-MM-DD), defaults to today.
+    """
+    try:
+        date_str = request.args.get('date', '').strip()
+        target_date = date.fromisoformat(date_str) if date_str else date.today()
+
+        member, record = get_member_attendance_on_date(member_id, target_date.isoformat())
+
+        if member is None:
+            return jsonify({'success': False, 'error': 'Member not found.'}), 404
+
+        return jsonify({
+            'success': True,
+            'date': target_date.isoformat(),
+            'member': member,
+            'present': record is not None,
+            'record': record
+        })
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/attendance/history', methods=['GET'])
 def api_attendance_history():

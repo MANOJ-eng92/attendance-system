@@ -253,3 +253,62 @@ def bulk_add_members(rows):
     conn.commit()
     conn.close()
     return added, skipped
+
+def get_attendance_by_date(target_date):
+    """
+    Return attendance records (present members) for a specific date,
+    plus a list of members who were absent on that date.
+    """
+    conn = get_db()
+
+    present = conn.execute('''
+        SELECT a.*, m.name, m.employee_id, m.department, m.photo_path
+        FROM attendance a
+        JOIN members m ON a.member_id = m.id
+        WHERE a.date = ?
+        ORDER BY m.name ASC
+    ''', (target_date,)).fetchall()
+
+    present_ids = [r['member_id'] for r in present]
+
+    if present_ids:
+        placeholders = ','.join('?' * len(present_ids))
+        absent = conn.execute(f'''
+            SELECT id, name, employee_id, department, photo_path
+            FROM members
+            WHERE active=1 AND id NOT IN ({placeholders})
+            ORDER BY name ASC
+        ''', present_ids).fetchall()
+    else:
+        absent = conn.execute('''
+            SELECT id, name, employee_id, department, photo_path
+            FROM members
+            WHERE active=1
+            ORDER BY name ASC
+        ''').fetchall()
+
+    conn.close()
+    return [dict(r) for r in present], [dict(r) for r in absent]
+
+def get_member_attendance_on_date(member_id, target_date):
+    """
+    Return the attendance record for a specific member on a specific date,
+    or None if the member was absent that day.
+    Also returns basic member info regardless.
+    """
+    conn = get_db()
+
+    member = conn.execute(
+        'SELECT * FROM members WHERE id=?', (member_id,)
+    ).fetchone()
+
+    if not member:
+        conn.close()
+        return None, None
+
+    record = conn.execute('''
+        SELECT * FROM attendance WHERE member_id=? AND date=?
+    ''', (member_id, target_date)).fetchone()
+
+    conn.close()
+    return dict(member), (dict(record) if record else None)

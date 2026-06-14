@@ -776,6 +776,9 @@
       <div class="nav-item" onclick="navigate('history')">
         <span class="nav-icon">📋</span> History
       </div>
+      <div class="nav-item" onclick="navigate('lookup')">
+        <span class="nav-icon">🔎</span> Date Lookup
+      </div>
     </div>
     <div class="sidebar-footer">
       <div class="model-status" id="modelStatus">
@@ -1064,6 +1067,50 @@
       </div>
     </div>
 
+    <!-- DATE LOOKUP -->
+    <div id="page-lookup" class="page">
+      <div class="page-header">
+        <div class="page-title">Attendance Date Lookup</div>
+        <div class="page-sub">Check attendance for a specific date or person</div>
+      </div>
+
+      <!-- All members on a date -->
+      <div class="card">
+        <div style="font-weight:700; margin-bottom:4px;">Everyone's Attendance on a Date</div>
+        <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">See who was present and absent on any given day</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px;">
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-input" id="lookupDate">
+          </div>
+          <button class="btn btn-primary" onclick="loadDateLookup()">
+            <span>🔎</span> Check Attendance
+          </button>
+        </div>
+        <div id="dateLookupResult"></div>
+      </div>
+
+      <!-- Specific member on a date -->
+      <div class="card" style="margin-top:20px;">
+        <div style="font-weight:700; margin-bottom:4px;">Check a Specific Person</div>
+        <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">Check if a member was present on a particular date</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:20px;">
+          <div class="form-group" style="min-width:220px;">
+            <label class="form-label">Member</label>
+            <select class="form-select" id="lookupMember"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-input" id="lookupMemberDate">
+          </div>
+          <button class="btn btn-primary" onclick="loadMemberDateLookup()">
+            <span>🔎</span> Check
+          </button>
+        </div>
+        <div id="memberLookupResult"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1102,6 +1149,7 @@ function navigate(page) {
   if (page === 'members') loadMembers();
   if (page === 'analytics') loadAnalytics();
   if (page === 'history') { loadHistory(7); initExportDates(); }
+  if (page === 'lookup') initLookupPage();
 }
 
 // ── Date ───────────────────────────────────────────────────────────────────────
@@ -1547,6 +1595,134 @@ function exportAttendanceCSV() {
 
   const url = `/api/attendance/export?start=${start}&end=${end}`;
   window.location.href = url;
+}
+
+// ── Date Lookup ───────────────────────────────────────────────────────────────
+async function initLookupPage() {
+  const today = new Date().toISOString().split('T')[0];
+
+  const lookupDateEl = document.getElementById('lookupDate');
+  const memberDateEl = document.getElementById('lookupMemberDate');
+  if (!lookupDateEl.value) lookupDateEl.value = today;
+  if (!memberDateEl.value) memberDateEl.value = today;
+  lookupDateEl.max = today;
+  memberDateEl.max = today;
+
+  // Populate member dropdown
+  const select = document.getElementById('lookupMember');
+  if (!select.dataset.loaded) {
+    const res = await api('/api/members');
+    const members = res.members || [];
+    if (!members.length) {
+      select.innerHTML = `<option value="">No members yet</option>`;
+    } else {
+      select.innerHTML = members.map(m => `<option value="${m.id}">${m.name} (${m.employee_id})</option>`).join('');
+    }
+    select.dataset.loaded = '1';
+  }
+
+  loadDateLookup();
+}
+
+async function loadDateLookup() {
+  const dateVal = document.getElementById('lookupDate').value;
+  if (!dateVal) { toast('Please select a date', 'error'); return; }
+
+  const c = document.getElementById('dateLookupResult');
+  c.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><p>Loading...</p></div>`;
+
+  const res = await api(`/api/attendance/by-date?date=${dateVal}`);
+  if (!res.success) {
+    c.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>${res.error || 'Failed to load'}</p></div>`;
+    return;
+  }
+
+  const { present, absent, present_count, absent_count } = res;
+
+  let html = `<div style="display:flex; gap:12px; margin-bottom:16px;">
+    <span class="badge badge-green">Present: ${present_count}</span>
+    <span class="badge badge-red">Absent: ${absent_count}</span>
+  </div>`;
+
+  if (!present.length && !absent.length) {
+    html += `<div class="empty-state"><div class="empty-icon">👥</div><p>No members registered yet</p></div>`;
+    c.innerHTML = html;
+    return;
+  }
+
+  html += `<table class="log-table">
+    <thead><tr>
+      <th>Status</th><th>Name</th><th>Employee ID</th><th>Department</th><th>Check In</th><th>Check Out</th>
+    </tr></thead>
+    <tbody>`;
+
+  present.forEach(r => {
+    html += `<tr>
+      <td><span class="badge badge-green">Present</span></td>
+      <td><span style="font-weight:600;">${r.name}</span></td>
+      <td><span style="font-family:var(--mono);font-size:12px;">${r.employee_id}</span></td>
+      <td><span style="color:var(--muted);font-size:12px;">${r.department}</span></td>
+      <td><span class="time-chip">${r.check_in || '—'}</span></td>
+      <td><span class="time-chip">${r.check_out || '—'}</span></td>
+    </tr>`;
+  });
+
+  absent.forEach(r => {
+    html += `<tr>
+      <td><span class="badge badge-red">Absent</span></td>
+      <td><span style="font-weight:600;">${r.name}</span></td>
+      <td><span style="font-family:var(--mono);font-size:12px;">${r.employee_id}</span></td>
+      <td><span style="color:var(--muted);font-size:12px;">${r.department}</span></td>
+      <td>—</td>
+      <td>—</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  c.innerHTML = html;
+}
+
+async function loadMemberDateLookup() {
+  const memberId = document.getElementById('lookupMember').value;
+  const dateVal = document.getElementById('lookupMemberDate').value;
+  const c = document.getElementById('memberLookupResult');
+
+  if (!memberId) { toast('Please select a member', 'error'); return; }
+  if (!dateVal) { toast('Please select a date', 'error'); return; }
+
+  c.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><p>Loading...</p></div>`;
+
+  const res = await api(`/api/attendance/member/${memberId}?date=${dateVal}`);
+  if (!res.success) {
+    c.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>${res.error || 'Failed to load'}</p></div>`;
+    return;
+  }
+
+  const { member, present, record, date: d } = res;
+  const avatarSrc = member.photo_path ? `/uploads/${member.photo_path.split('/').pop()}` : null;
+
+  let html = `<div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+    ${avatarSrc
+      ? `<img src="${avatarSrc}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" alt="${member.name}">`
+      : `<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">${member.name[0]}</div>`}
+    <div>
+      <div style="font-weight:700; font-size:16px;">${member.name}</div>
+      <div style="font-size:12px; color:var(--muted); font-family:var(--mono);">${member.employee_id} • ${member.department}</div>
+    </div>
+  </div>`;
+
+  if (present) {
+    html += `<div style="display:flex; gap:24px; align-items:center; flex-wrap:wrap;">
+      <span class="badge badge-green" style="font-size:14px; padding:8px 16px;">✅ Present on ${d}</span>
+      <div><span style="color:var(--muted); font-size:12px;">Check In</span><br><span class="time-chip">${record.check_in || '—'}</span></div>
+      <div><span style="color:var(--muted); font-size:12px;">Check Out</span><br><span class="time-chip">${record.check_out || '—'}</span></div>
+      ${record.confidence ? `<div><span style="color:var(--muted); font-size:12px;">Confidence</span><br><span class="badge badge-blue">${record.confidence}%</span></div>` : ''}
+    </div>`;
+  } else {
+    html += `<span class="badge badge-red" style="font-size:14px; padding:8px 16px;">❌ Absent on ${d}</span>`;
+  }
+
+  c.innerHTML = html;
 }
 
 // ── Add Member ────────────────────────────────────────────────────────────────
