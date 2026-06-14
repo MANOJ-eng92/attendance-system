@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceTrack — Smart Attendance System</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c10;
+    --surface: #0d1219;
+    --card: #111822;
+    --border: #1e2d3d;
+    --accent: #00d4ff;
+    --accent2: #7b5ea7;
+    --green: #00e676;
+    --red: #ff4757;
+    --amber: #ffa502;
+    --text: #e8f0fe;
+    --muted: #5a7a9a;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orbs */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px; left: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,212,255,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  .glow-orb {
+    position: fixed;
+    bottom: -200px; right: -200px;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(123,94,167,0.07) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── Layout ── */
+  .app { position: relative; z-index: 1; display: flex; height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .logo {
+    padding: 28px 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-mark {
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo-text { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-sub { font-size: 10px; color: var(--muted); font-family: var(--mono); letter-spacing: 2px; margin-top: 2px; }
+
+  .nav { padding: 20px 12px; flex: 1; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px; font-weight: 600;
+    color: var(--muted);
+    transition: all 0.2s;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+
+  .nav-item:hover { background: var(--card); color: var(--text); }
+
+  .nav-item.active {
+    background: rgba(0,212,255,0.08);
+    color: var(--accent);
+    border-color: rgba(0,212,255,0.2);
+  }
+
+  .nav-icon { font-size: 18px; width: 22px; text-align: center; }
+
+  .sidebar-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .model-status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--card);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.inactive { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main ── */
+  .main { flex: 1; overflow-y: auto; }
+
+  .page { display: none; padding: 32px; max-width: 1200px; }
+  .page.active { display: block; }
+
+  .page-header { margin-bottom: 28px; }
+
+  .page-title {
+    font-size: 28px; font-weight: 800; letter-spacing: -0.5px;
+  }
+
+  .page-sub { color: var(--muted); font-size: 14px; margin-top: 4px; font-family: var(--mono); }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+
+  .card-title {
+    font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 16px;
+  }
+
+  /* ── Stats Grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.blue::before { background: linear-gradient(90deg, var(--accent), transparent); }
+  .stat-card.purple::before { background: linear-gradient(90deg, var(--accent2), transparent); }
+  .stat-card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
+  .stat-card.red::before { background: linear-gradient(90deg, var(--red), transparent); }
+
+  .stat-label { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 1px; text-transform: uppercase; }
+  .stat-value { font-size: 36px; font-weight: 800; margin: 6px 0 0; letter-spacing: -1px; }
+  .stat-card.blue .stat-value { color: var(--accent); }
+  .stat-card.purple .stat-value { color: var(--accent2); }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.red .stat-value { color: var(--red); }
+  .stat-suffix { font-size: 16px; font-weight: 400; }
+
+  /* ── Scan Area ── */
+  .scan-container {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  .scan-zone {
+    background: var(--card);
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-zone.dragover, .scan-zone:hover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.03);
+  }
+
+  .scan-zone.scanning {
+    border-color: var(--accent);
+    border-style: solid;
+    animation: scan-glow 1.5s ease-in-out infinite;
+  }
+
+  @keyframes scan-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0,212,255,0); }
+    50% { box-shadow: 0 0 30px 5px rgba(0,212,255,0.15); }
+  }
+
+  .scan-icon { font-size: 56px; margin-bottom: 16px; opacity: 0.4; }
+  .scan-text { font-size: 15px; color: var(--muted); font-weight: 600; }
+  .scan-sub { font-size: 12px; color: var(--muted); opacity: 0.6; margin-top: 6px; font-family: var(--mono); }
+
+  .scan-result-img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    border-radius: 18px;
+    max-height: 420px;
+  }
+
+  .file-input { display: none; }
+
+  /* ── Camera Tab Switcher ── */
+  .scan-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 5px;
+  }
+  .scan-tab {
+    flex: 1;
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .scan-tab.active {
+    background: var(--card);
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .scan-tab:hover:not(.active) { color: var(--text); }
+
+  /* ── Live Camera ── */
+  .camera-zone {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .camera-zone.active-stream { border-color: var(--accent); }
+  #cameraVideo {
+    width: 100%;
+    max-height: 420px;
+    object-fit: cover;
+    border-radius: 18px;
+    display: none;
+  }
+  #cameraCanvas { display: none; }
+  #cameraPlaceholder { text-align: center; padding: 32px; }
+  .camera-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px; height: 200px;
+    border: 3px solid rgba(0,212,255,0.5);
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+  }
+  .camera-overlay.visible { display: block; animation: pulse-ring 2s infinite; }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(0,212,255,0.3); }
+    70% { box-shadow: 0 0 0 12px rgba(0,212,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,212,255,0); }
+  }
+  .camera-snapshot-preview {
+    width: 100%; max-height: 420px;
+    object-fit: contain; border-radius: 18px;
+    display: none;
+  }
+  .camera-status {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: var(--accent);
+    font-size: 11px; font-family: var(--mono);
+    padding: 4px 12px; border-radius: 20px;
+    display: none;
+  }
+  .camera-status.visible { display: block; }
+
+  /* ── Result Panel ── */
+  .result-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card.success { border-color: rgba(0,230,118,0.3); background: rgba(0,230,118,0.05); }
+  .result-card.error { border-color: rgba(255,71,87,0.3); background: rgba(255,71,87,0.05); }
+  .result-card.warning { border-color: rgba(255,165,2,0.3); background: rgba(255,165,2,0.05); }
+
+  .result-status {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 14px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-green { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+  .badge-red { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
+  .badge-amber { background: rgba(255,165,2,0.15); color: var(--amber); border: 1px solid rgba(255,165,2,0.3); }
+  .badge-blue { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+
+  .member-info { display: flex; gap: 14px; align-items: center; }
+
+  .member-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border);
+  }
+
+  .member-avatar-placeholder {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; color: white;
+  }
+
+  .member-details { flex: 1; }
+  .member-name { font-size: 16px; font-weight: 700; }
+  .member-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+
+  .confidence-bar-wrap { margin-top: 14px; }
+  .confidence-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
+
+  .confidence-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .confidence-fill {
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Today's Log ── */
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .log-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .log-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+    vertical-align: middle;
+  }
+
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .time-chip {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface);
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Add Member Form ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .form-group { display: flex; flex-direction: column; gap: 8px; }
+  .form-group.full { grid-column: span 2; }
+
+  .form-label { font-size: 12px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .form-input, .form-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+
+  .form-input:focus, .form-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.08);
+  }
+
+  .form-input::placeholder { color: var(--muted); }
+
+  .photo-upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .photo-upload-zone:hover { border-color: var(--accent); background: rgba(0,212,255,0.03); }
+  .photo-upload-zone .up-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+  .photo-upload-zone .up-text { font-size: 13px; color: var(--muted); }
+
+  .photo-preview-img { width: 100%; max-height: 200px; object-fit: cover; border-radius: 8px; }
+
+  .btn {
+    padding: 11px 22px;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0099cc);
+    color: #000;
+  }
+
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,212,255,0.25); }
+
+  .btn-secondary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger { background: rgba(255,71,87,0.15); border: 1px solid rgba(255,71,87,0.3); color: var(--red); }
+  .btn-danger:hover { background: rgba(255,71,87,0.25); }
+
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+  /* ── Members Grid ── */
+  .members-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  .member-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .member-card:hover { border-color: rgba(0,212,255,0.3); transform: translateY(-2px); }
+
+  .member-card-avatar {
+    width: 72px; height: 72px; border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--border);
+    margin: 0 auto 12px;
+    display: block;
+  }
+
+  .member-card-placeholder {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 800;
+    margin: 0 auto 12px;
+  }
+
+  .member-card-name { font-size: 15px; font-weight: 700; }
+  .member-card-id { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 3px; }
+  .member-card-dept { font-size: 12px; color: var(--accent); margin-top: 6px; }
+
+  .member-card-delete {
+    position: absolute; top: 10px; right: 10px;
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 16px;
+    transition: color 0.2s;
+  }
+
+  .member-card-delete:hover { color: var(--red); }
+
+  /* ── Analytics ── */
+  .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  .progress-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .progress-item { display: flex; flex-direction: column; gap: 5px; }
+  .progress-header { display: flex; justify-content: space-between; font-size: 13px; }
+  .progress-name { font-weight: 600; }
+  .progress-pct { font-family: var(--mono); color: var(--accent); }
+
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+  }
+
+  /* ── Trend Chart ── */
+  .trend-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 100px;
+    padding-bottom: 24px;
+    position: relative;
+  }
+
+  .trend-bar-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .trend-bar {
+    width: 100%;
+    border-radius: 5px 5px 0 0;
+    background: linear-gradient(to top, var(--accent2), var(--accent));
+    transition: height 0.8s cubic-bezier(0.4,0,0.2,1);
+    min-height: 4px;
+    position: relative;
+  }
+
+  .trend-bar:hover::after {
+    content: attr(data-count);
+    position: absolute;
+    top: -24px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #000;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .trend-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-align: center;
+  }
+
+  /* ── History Table ── */
+  .history-filters { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+
+  .filter-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.08); }
+
+  /* ── Toast ── */
+  .toast-container {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    z-index: 1000;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  .toast {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    max-width: 340px;
+    animation: toastIn 0.3s ease;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .toast.success { border-color: rgba(0,230,118,0.4); }
+  .toast.error { border-color: rgba(255,71,87,0.4); }
+
+  /* ── Loading ── */
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    text-align: center; padding: 48px;
+    color: var(--muted);
+  }
+
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+  .empty-state p { font-size: 14px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .scan-container { grid-template-columns: 1fr; }
+    .analytics-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="glow-orb"></div>
+
+<div class="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <div class="logo-icon">👁</div>
+        <div>
+          <div class="logo-text">FaceTrack</div>
+          <div class="logo-sub">ATTENDANCE SYSTEM</div>
+        </div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-item active" onclick="navigate('dashboard')">
+        <span class="nav-icon">⬛</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="navigate('scan')">
+        <span class="nav-icon">📷</span> Scan Face
+      </div>
+      <div class="nav-item" onclick="navigate('members')">
+        <span class="nav-icon">👥</span> Members
+      </div>
+      <div class="nav-item" onclick="navigate('add-member')">
+        <span class="nav-icon">➕</span> Add Member
+      </div>
+      <div class="nav-item" onclick="navigate('analytics')">
+        <span class="nav-icon">📊</span> Analytics
+      </div>
+      <div class="nav-item" onclick="navigate('history')">
+        <span class="nav-icon">📋</span> History
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="model-status" id="modelStatus">
+        <div class="status-dot inactive" id="statusDot"></div>
+        <span id="statusText">Checking model...</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub" id="currentDate">Loading...</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card blue">
+          <div class="stat-label">Total Members</div>
+          <div class="stat-value" id="statTotal">—</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Present Today</div>
+          <div class="stat-value" id="statPresent">—</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Absent Today</div>
+          <div class="stat-value" id="statAbsent">—</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">Attendance Rate</div>
+          <div class="stat-value" id="statRate">—<span class="stat-suffix">%</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Today's Attendance Log</span>
+          <button class="btn btn-secondary" style="padding:6px 14px; font-size:12px;" onclick="exportTodayCSV()">
+            <span>⬇️</span> Export Today's CSV
+          </button>
+        </div>
+        <div id="todayLog">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>No attendance recorded today</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCAN -->
+    <div id="page-scan" class="page">
+      <div class="page-header">
+        <div class="page-title">Scan Face</div>
+        <div class="page-sub">Use your laptop camera or upload a photo to mark attendance</div>
+      </div>
+
+      <div class="scan-container">
+        <div>
+          <!-- Tab Switcher -->
+          <div class="scan-tabs">
+            <button class="scan-tab active" id="tabCamera" onclick="switchScanTab('camera')">📷 Live Camera</button>
+            <button class="scan-tab" id="tabUpload" onclick="switchScanTab('upload')">📁 Upload Photo</button>
+          </div>
+
+          <!-- LIVE CAMERA PANEL -->
+          <div id="cameraPanelWrap">
+            <div class="camera-zone" id="cameraZone">
+              <div id="cameraPlaceholder">
+                <div class="scan-icon">📷</div>
+                <div class="scan-text">Camera not started</div>
+                <div class="scan-sub">Click "Start Camera" to begin</div>
+              </div>
+              <video id="cameraVideo" autoplay playsinline></video>
+              <canvas id="cameraCanvas"></canvas>
+              <img id="cameraSnapshotPreview" class="camera-snapshot-preview" alt="Snapshot">
+              <div class="camera-overlay" id="cameraOverlay"></div>
+              <div class="camera-status" id="cameraStatus">● LIVE</div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+              <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">
+                <span>📷</span> Start Camera
+              </button>
+              <button class="btn btn-primary" id="captureBtn" onclick="captureAndRecognize()" style="display:none;">
+                <span>🔍</span> Capture & Recognize
+              </button>
+              <button class="btn btn-secondary" id="retakeBtn" onclick="retakePhoto()" style="display:none;">↺ Retake</button>
+              <button class="btn btn-secondary" id="stopCameraBtn" onclick="stopCamera()" style="display:none;">⏹ Stop Camera</button>
+            </div>
+          </div>
+
+          <!-- UPLOAD PANEL -->
+          <div id="uploadPanelWrap" style="display:none;">
+            <div class="scan-zone" id="scanZone" onclick="document.getElementById('scanInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
+              <div id="scanPlaceholder">
+                <div class="scan-icon">🎯</div>
+                <div class="scan-text">Click or drag photo here</div>
+                <div class="scan-sub">JPG, PNG — Face must be clearly visible</div>
+              </div>
+              <img id="scanPreview" class="scan-result-img" style="display:none" alt="Scan preview">
+            </div>
+            <input type="file" id="scanInput" class="file-input" accept="image/*" onchange="handleScanFile(event)">
+            <div style="display:flex;gap:10px;margin-top:14px;">
+              <button class="btn btn-primary" id="scanBtn" onclick="triggerScan()" style="display:none;">
+                <span>🔍</span> Recognize & Mark Attendance
+              </button>
+              <button class="btn btn-secondary" onclick="clearScan()" id="clearScanBtn" style="display:none;">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-panel" id="resultPanel">
+          <div class="card">
+            <div class="card-title">Recognition Result</div>
+            <div id="resultContent">
+              <div class="empty-state" style="padding:24px">
+                <div class="empty-icon">👤</div>
+                <p>Capture or upload a photo to recognize</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="recentScansCard">
+            <div class="card-title">Recent Scans Today</div>
+            <div id="recentScans">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEMBERS -->
+    <div id="page-members" class="page">
+      <div class="page-header">
+        <div class="page-title">Members</div>
+        <div class="page-sub">Registered team members</div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="document.getElementById('csvImportInput').click()">
+          <span>📥</span> Import CSV
+        </button>
+        <input type="file" id="csvImportInput" class="file-input" accept=".csv" onchange="handleMemberCSVImport(event)">
+        <button class="btn btn-secondary" onclick="window.location.href='/api/members/export'">
+          <span>📤</span> Export Members CSV
+        </button>
+        <button class="btn btn-secondary" onclick="window.location.href='/api/members/import/template'">
+          <span>📄</span> Download CSV Template
+        </button>
+        <div id="csvImportSpinner" style="display:none;"><div class="spinner"></div></div>
+      </div>
+
+      <div id="membersGrid" class="members-grid"></div>
+    </div>
+
+    <!-- ADD MEMBER -->
+    <div id="page-add-member" class="page">
+      <div class="page-header">
+        <div class="page-title">Add New Member</div>
+        <div class="page-sub">Register a new person for face recognition</div>
+      </div>
+
+      <div style="max-width:600px;">
+        <div class="card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Full Name *</label>
+              <input type="text" class="form-input" id="newName" placeholder="e.g. Alice Johnson">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Employee ID *</label>
+              <input type="text" class="form-input" id="newEmpId" placeholder="e.g. EMP001">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <input type="text" class="form-input" id="newDept" placeholder="e.g. Engineering">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Profile Photo *</label>
+              <div class="photo-upload-zone" onclick="document.getElementById('memberPhoto').click()" id="photoZone">
+                <div id="photoPlaceholder">
+                  <div class="up-icon">📸</div>
+                  <div class="up-text">Click to upload a clear frontal face photo</div>
+                  <div class="up-text" style="font-size:11px;margin-top:4px;opacity:0.6;">JPG, PNG — Face should be well-lit and centered</div>
+                </div>
+                <img id="memberPhotoPreview" class="photo-preview-img" style="display:none" alt="Preview">
+              </div>
+              <input type="file" id="memberPhoto" class="file-input" accept="image/*" onchange="handleMemberPhoto(event)">
+            </div>
+          </div>
+
+          <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
+            <button class="btn btn-primary" id="addMemberBtn" onclick="submitAddMember()">
+              <span>👤</span> Add Member
+            </button>
+            <button class="btn btn-secondary" onclick="clearAddForm()">Clear</button>
+            <div id="addMemberSpinner" style="display:none;"><div class="spinner"></div></div>
+          </div>
+
+          <div id="addMemberResult" style="margin-top:16px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div id="page-analytics" class="page">
+      <div class="page-header">
+        <div class="page-title">Analytics</div>
+        <div class="page-sub">Attendance insights and trends</div>
+      </div>
+
+      <div class="analytics-grid">
+        <div class="card">
+          <div class="card-title">7-Day Attendance Trend</div>
+          <div class="trend-chart" id="trendChart"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Today's Summary</div>
+          <div id="summaryCircle" style="display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:16px;">
+            <div style="position:relative;width:100px;height:100px;">
+              <svg viewBox="0 0 100 100" style="transform:rotate(-90deg);width:100%;height:100%">
+                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="10"/>
+                <circle cx="50" cy="50" r="42" fill="none" stroke="url(#grad)" stroke-width="10"
+                  stroke-dasharray="263.9"
+                  stroke-dashoffset="263.9"
+                  stroke-linecap="round"
+                  id="circleProgress"/>
+                <defs>
+                  <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#7b5ea7"/>
+                    <stop offset="100%" stop-color="#00d4ff"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;" id="circleText">—%</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:13px;color:var(--muted)">Attendance Rate</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 2;">
+          <div class="card-title">Individual Attendance %</div>
+          <div class="progress-list" id="memberProgress"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="page-history" class="page">
+      <div class="page-header">
+        <div class="page-title">Attendance History</div>
+        <div class="page-sub">Complete attendance records</div>
+      </div>
+
+      <div class="card">
+        <div class="history-filters">
+          <button class="filter-btn active" onclick="loadHistory(7, this)">Last 7 Days</button>
+          <button class="filter-btn" onclick="loadHistory(30, this)">Last 30 Days</button>
+          <button class="filter-btn" onclick="loadHistory(90, this)">Last 90 Days</button>
+        </div>
+        <div id="historyTable">Loading...</div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div style="font-weight:700; margin-bottom:4px;">Export Attendance CSV</div>
+        <div style="color:var(--muted); font-size:13px; margin-bottom:16px;">Download attendance records for a custom date range</div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input type="date" class="form-input" id="exportStartDate">
+          </div>
+          <div class="form-group">
+            <label class="form-label">End Date</label>
+            <input type="date" class="form-input" id="exportEndDate">
+          </div>
+          <button class="btn btn-primary" onclick="exportAttendanceCSV()">
+            <span>⬇️</span> Download CSV
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let currentPage = 'dashboard';
+let scanFile = null;
+let memberPhotoFile = null;
+
+// Camera state
+let cameraStream = null;
+let cameraMode = 'camera'; // 'camera' or 'upload'
+let snapshotTaken = false;
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function navigate(page) {
+  // Stop camera if leaving scan page
+  if (currentPage === 'scan' && page !== 'scan') {
+    stopCamera();
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.textContent.trim().toLowerCase().includes(page.replace('-', ' '))) {
+      n.classList.add('active');
+    }
+  });
+  currentPage = page;
+
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'scan') loadRecentScans();
+  if (page === 'members') loadMembers();
+  if (page === 'analytics') loadAnalytics();
+  if (page === 'history') { loadHistory(7); initExportDates(); }
+}
+
+// ── Date ───────────────────────────────────────────────────────────────────────
+function updateDate() {
+  const now = new Date();
+  document.getElementById('currentDate').textContent =
+    now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+}
+
+// ── API Helpers ────────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+function toast(msg, type='success') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(20px)'; t.style.transition='all 0.3s'; setTimeout(()=>t.remove(), 300); }, 3500);
+}
+
+// ── Model Status ───────────────────────────────────────────────────────────────
+async function checkModelStatus() {
+  try {
+    const d = await api('/api/stats');
+    const hasMem = d.stats?.total_members > 0;
+    document.getElementById('statusDot').className = `status-dot ${hasMem ? '' : 'inactive'}`;
+    document.getElementById('statusText').textContent = hasMem ? `${d.stats.total_members} members` : 'No members yet';
+  } catch(e) {}
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  updateDate();
+  const [statsRes, todayRes] = await Promise.all([api('/api/stats'), api('/api/attendance/today')]);
+  if (!statsRes.success) return;
+
+  const s = statsRes.stats;
+  document.getElementById('statTotal').textContent = s.total_members;
+  document.getElementById('statPresent').textContent = s.present_today;
+  document.getElementById('statAbsent').textContent = s.absent_today;
+  document.getElementById('statRate').innerHTML = `${s.attendance_rate}<span class="stat-suffix">%</span>`;
+
+  const log = todayRes.records;
+  const container = document.getElementById('todayLog');
+  if (!log.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>No attendance recorded today</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="log-table">
+      <thead><tr>
+        <th>Member</th><th>Department</th><th>Check In</th><th>Check Out</th><th>Confidence</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${log.map(r => `
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                ${r.photo_path ? `<img src="/uploads/${r.photo_path.split('/').pop()}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">` : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">${r.name[0]}</div>`}
+                <span style="font-weight:600;">${r.name}</span>
+              </div>
+            </td>
+            <td><span style="color:var(--muted);font-size:12px;">${r.department}</span></td>
+            <td><span class="time-chip">${r.check_in || '—'}</span></td>
+            <td><span class="time-chip">${r.check_out || '—'}</span></td>
+            <td><span class="badge badge-blue">${r.confidence ? r.confidence+'%' : '—'}</span></td>
+            <td><span class="badge badge-green">Present</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+function switchScanTab(mode) {
+  cameraMode = mode;
+  document.getElementById('tabCamera').classList.toggle('active', mode === 'camera');
+  document.getElementById('tabUpload').classList.toggle('active', mode === 'upload');
+  document.getElementById('cameraPanelWrap').style.display = mode === 'camera' ? 'block' : 'none';
+  document.getElementById('uploadPanelWrap').style.display = mode === 'upload' ? 'block' : 'none';
+  if (mode === 'upload') stopCamera();
+}
+
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+    });
+    const video = document.getElementById('cameraVideo');
+    video.srcObject = cameraStream;
+    video.style.display = 'block';
+    document.getElementById('cameraPlaceholder').style.display = 'none';
+    document.getElementById('cameraOverlay').classList.add('visible');
+    document.getElementById('cameraStatus').classList.add('visible');
+    document.getElementById('cameraZone').classList.add('active-stream');
+    document.getElementById('startCameraBtn').style.display = 'none';
+    document.getElementById('captureBtn').style.display = 'flex';
+    document.getElementById('stopCameraBtn').style.display = 'flex';
+    snapshotTaken = false;
+  } catch(err) {
+    const msg = err.name === 'NotAllowedError'
+      ? 'Camera access denied. Please allow camera permission in your browser.'
+      : err.name === 'NotFoundError'
+      ? 'No camera found. Please connect a camera and try again.'
+      : 'Could not start camera: ' + err.message;
+    toast(msg, 'error');
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  const video = document.getElementById('cameraVideo');
+  video.srcObject = null;
+  video.style.display = 'none';
+  document.getElementById('cameraPlaceholder').style.display = 'flex';
+  document.getElementById('cameraOverlay').classList.remove('visible');
+  document.getElementById('cameraStatus').classList.remove('visible');
+  document.getElementById('cameraZone').classList.remove('active-stream');
+  document.getElementById('startCameraBtn').style.display = 'flex';
+  document.getElementById('captureBtn').style.display = 'none';
+  document.getElementById('retakeBtn').style.display = 'none';
+  document.getElementById('stopCameraBtn').style.display = 'none';
+  document.getElementById('cameraSnapshotPreview').style.display = 'none';
+  snapshotTaken = false;
+}
+
+function retakePhoto() {
+  // Hide snapshot, show live video again
+  document.getElementById('cameraSnapshotPreview').style.display = 'none';
+  document.getElementById('cameraVideo').style.display = 'block';
+  document.getElementById('cameraOverlay').classList.add('visible');
+  document.getElementById('captureBtn').innerHTML = '<span>🔍</span> Capture & Recognize';
+  document.getElementById('captureBtn').disabled = false;
+  document.getElementById('retakeBtn').style.display = 'none';
+  snapshotTaken = false;
+}
+
+async function captureAndRecognize() {
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+  const preview = document.getElementById('cameraSnapshotPreview');
+
+  if (!cameraStream || video.readyState < 2) {
+    toast('Camera not ready. Please wait.', 'error');
+    return;
+  }
+
+  // Capture frame
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  // Show snapshot, hide live video
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  preview.src = dataUrl;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  document.getElementById('cameraOverlay').classList.remove('visible');
+  snapshotTaken = true;
+
+  // Show retake button
+  document.getElementById('retakeBtn').style.display = 'flex';
+
+  // Send to API
+  const btn = document.getElementById('captureBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Recognizing...';
+  document.getElementById('cameraZone').classList.add('scanning');
+
+  try {
+    // Convert dataURL to blob
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append('image', blob, 'capture.jpg');
+    const result = await api('/api/recognize', { method: 'POST', body: formData });
+
+    // Update preview with annotated image if available
+    if (result.annotated_image) {
+      preview.src = result.annotated_image;
+    }
+
+    renderResult(result);
+    loadRecentScans();
+    checkModelStatus();
+  } catch(e) {
+    renderResult({ success: false, error: e.message });
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span>🔍</span> Capture & Recognize';
+  document.getElementById('cameraZone').classList.remove('scanning');
+}
+
+// ── Scan ──────────────────────────────────────────────────────────────────────
+function handleDragOver(e) { e.preventDefault(); document.getElementById('scanZone').classList.add('dragover'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('scanZone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) setScanFile(file);
+}
+
+function handleScanFile(e) {
+  const file = e.target.files[0];
+  if (file) setScanFile(file);
+}
+
+function setScanFile(file) {
+  scanFile = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const prev = document.getElementById('scanPreview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+    document.getElementById('scanPlaceholder').style.display = 'none';
+    document.getElementById('scanBtn').style.display = 'flex';
+    document.getElementById('clearScanBtn').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearScan() {
+  scanFile = null;
+  document.getElementById('scanPreview').style.display = 'none';
+  document.getElementById('scanPlaceholder').style.display = 'block';
+  document.getElementById('scanBtn').style.display = 'none';
+  document.getElementById('clearScanBtn').style.display = 'none';
+  document.getElementById('scanInput').value = '';
+  document.getElementById('resultContent').innerHTML = `<div class="empty-state" style="padding:24px"><div class="empty-icon">👤</div><p>Capture or upload a photo to recognize</p></div>`;
+}
+
+async function triggerScan() {
+  if (!scanFile) return;
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Recognizing...';
+
+  const zone = document.getElementById('scanZone');
+  zone.classList.add('scanning');
+
+  const formData = new FormData();
+  formData.append('image', scanFile);
+
+  try {
+    const res = await api('/api/recognize', { method: 'POST', body: formData });
+    renderResult(res);
+    loadRecentScans();
+    checkModelStatus();
+  } catch(e) {
+    renderResult({ success: false, error: e.message });
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span>🔍</span> Recognize & Mark Attendance';
+  zone.classList.remove('scanning');
+}
+
+function renderResult(res) {
+  const c = document.getElementById('resultContent');
+  if (!res.success) {
+    c.innerHTML = `<div class="result-card error">
+      <div class="result-status"><span>❌</span> Recognition Failed</div>
+      <p style="font-size:13px;color:var(--muted)">${res.error}</p>
+    </div>`;
+    return;
+  }
+
+  if (!res.recognized) {
+    c.innerHTML = `<div class="result-card warning">
+      <div class="result-status"><span>⚠️</span> Not Recognized</div>
+      <p style="font-size:13px;color:var(--muted)">Face detected but not in database. Confidence: ${res.confidence}%</p>
+      <div style="margin-top:12px;">
+        <button class="btn btn-secondary" style="font-size:12px;padding:7px 14px;" onclick="navigate('add-member')">➕ Register This Person</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const action = res.action;
+  const actionLabel = action === 'check_in' ? '✅ Checked In' : action === 'check_out' ? '🔒 Checked Out' : '⚠️ Already Complete';
+  const cardClass = action === 'check_in' ? 'success' : action === 'check_out' ? '' : 'warning';
+  const m = res.member;
+  const avatarSrc = m.photo_path ? `/uploads/${m.photo_path.split('/').pop()}` : null;
+
+  // Update scan zone with annotated image if available
+  if (res.annotated_image) {
+    document.getElementById('scanPreview').src = res.annotated_image;
+  }
+
+  c.innerHTML = `
+    <div class="result-card ${cardClass}">
+      <div class="result-status">
+        ${actionLabel}
+        <span class="badge badge-green">${res.confidence}% match</span>
+      </div>
+      <div class="member-info">
+        ${avatarSrc ? `<img src="${avatarSrc}" class="member-avatar" alt="${m.name}">` : `<div class="member-avatar-placeholder">${m.name[0]}</div>`}
+        <div class="member-details">
+          <div class="member-name">${m.name}</div>
+          <div class="member-meta">${m.employee_id} · ${m.department}</div>
+          <div style="margin-top:6px;">
+            ${res.record?.check_in ? `<span class="badge badge-blue">IN: ${res.record.check_in}</span>` : ''}
+            ${res.record?.check_out ? `<span class="badge badge-amber" style="margin-left:6px;">OUT: ${res.record.check_out}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="confidence-bar-wrap">
+        <div class="confidence-label"><span>Confidence</span><span>${res.confidence}%</span></div>
+        <div class="confidence-bar"><div class="confidence-fill" style="width:${res.confidence}%"></div></div>
+      </div>
+    </div>`;
+
+  toast(res.message || actionLabel, action === 'check_in' || action === 'check_out' ? 'success' : 'error');
+}
+
+async function loadRecentScans() {
+  const res = await api('/api/attendance/today');
+  const c = document.getElementById('recentScans');
+  const records = res.records?.slice(0, 5) || [];
+  if (!records.length) {
+    c.innerHTML = `<p style="font-size:13px;color:var(--muted);padding:8px 0;">No scans yet today</p>`;
+    return;
+  }
+  c.innerHTML = records.map(r => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;">${r.name}</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span class="time-chip">${r.check_in}</span>
+        <span class="badge badge-green">IN</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Members ───────────────────────────────────────────────────────────────────
+async function loadMembers() {
+  const res = await api('/api/members');
+  const grid = document.getElementById('membersGrid');
+  if (!res.members?.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:span 4"><div class="empty-icon">👥</div><p>No members yet. <a href="#" onclick="navigate('add-member')" style="color:var(--accent)">Add your first member →</a></p></div>`;
+    return;
+  }
+  grid.innerHTML = res.members.map(m => {
+    const avatarSrc = m.photo_path ? `/uploads/${m.photo_path.split('/').pop()}` : null;
+    return `
+      <div class="member-card">
+        <button class="member-card-delete" onclick="deleteMember(${m.id}, '${m.name}')" title="Remove">✕</button>
+        ${avatarSrc ? `<img src="${avatarSrc}" class="member-card-avatar" alt="${m.name}">` : `<div class="member-card-placeholder">${m.name[0]}</div>`}
+        <div class="member-card-name">${m.name}</div>
+        <div class="member-card-id">${m.employee_id}</div>
+        <div class="member-card-dept">${m.department}</div>
+        ${!avatarSrc ? `<div style="margin-top:8px;font-size:11px;color:var(--amber);font-family:var(--mono);">⚠ No photo — not face-recognition ready</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+async function deleteMember(id, name) {
+  if (!confirm(`Remove ${name} from the system?`)) return;
+  const res = await api(`/api/members/${id}`, { method: 'DELETE' });
+  if (res.success) { toast(`${name} removed`, 'success'); loadMembers(); checkModelStatus(); }
+  else toast(res.error, 'error');
+}
+
+// ── CSV Import / Export ──────────────────────────────────────────────────────
+async function handleMemberCSVImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    toast('Please select a .csv file', 'error');
+    event.target.value = '';
+    return;
+  }
+
+  const spinner = document.getElementById('csvImportSpinner');
+  spinner.style.display = 'block';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await api('/api/members/import', { method: 'POST', body: formData });
+    if (res.success) {
+      toast(res.message, 'success');
+      if (res.skipped && res.skipped.length) {
+        console.warn('Skipped rows:', res.skipped);
+      }
+      loadMembers();
+      checkModelStatus();
+    } else {
+      toast(res.error || 'Import failed', 'error');
+    }
+  } catch (e) {
+    toast('Import failed: ' + e.message, 'error');
+  }
+
+  spinner.style.display = 'none';
+  event.target.value = '';
+}
+
+function exportTodayCSV() {
+  const today = new Date().toISOString().split('T')[0];
+  window.location.href = `/api/attendance/export?start=${today}&end=${today}`;
+}
+
+function initExportDates() {
+  const startEl = document.getElementById('exportStartDate');
+  const endEl = document.getElementById('exportEndDate');
+  if (startEl.value && endEl.value) return; // already set by user
+
+  const today = new Date();
+  const weekAgo = new Date();
+  weekAgo.setDate(today.getDate() - 6);
+
+  const fmt = d => d.toISOString().split('T')[0];
+  endEl.value = fmt(today);
+  startEl.value = fmt(weekAgo);
+  endEl.max = fmt(today);
+  startEl.max = fmt(today);
+}
+
+function exportAttendanceCSV() {
+  const start = document.getElementById('exportStartDate').value;
+  const end = document.getElementById('exportEndDate').value;
+
+  if (!start || !end) {
+    toast('Please select both start and end dates', 'error');
+    return;
+  }
+  if (start > end) {
+    toast('Start date must be before end date', 'error');
+    return;
+  }
+
+  const url = `/api/attendance/export?start=${start}&end=${end}`;
+  window.location.href = url;
+}
+
+// ── Add Member ────────────────────────────────────────────────────────────────
+function handleMemberPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  memberPhotoFile = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('memberPhotoPreview').src = ev.target.result;
+    document.getElementById('memberPhotoPreview').style.display = 'block';
+    document.getElementById('photoPlaceholder').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function submitAddMember() {
+  const name = document.getElementById('newName').value.trim();
+  const empId = document.getElementById('newEmpId').value.trim();
+  const dept = document.getElementById('newDept').value.trim() || 'General';
+
+  if (!name || !empId) { toast('Name and Employee ID are required', 'error'); return; }
+  if (!memberPhotoFile) { toast('Please upload a photo', 'error'); return; }
+
+  const btn = document.getElementById('addMemberBtn');
+  btn.disabled = true;
+  document.getElementById('addMemberSpinner').style.display = 'flex';
+
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('employee_id', empId);
+  fd.append('department', dept);
+  fd.append('photo', memberPhotoFile);
+
+  const res = await api('/api/members', { method: 'POST', body: fd });
+  btn.disabled = false;
+  document.getElementById('addMemberSpinner').style.display = 'none';
+
+  const resDiv = document.getElementById('addMemberResult');
+  if (res.success) {
+    resDiv.innerHTML = `<div class="result-card success"><div class="result-status">✅ ${res.message}</div></div>`;
+    toast(res.message, 'success');
+    clearAddForm();
+    checkModelStatus();
+  } else {
+    resDiv.innerHTML = `<div class="result-card error"><div class="result-status">❌ ${res.error}</div></div>`;
+    toast(res.error, 'error');
+  }
+}
+
+function clearAddForm() {
+  document.getElementById('newName').value = '';
+  document.getElementById('newEmpId').value = '';
+  document.getElementById('newDept').value = '';
+  document.getElementById('memberPhoto').value = '';
+  memberPhotoFile = null;
+  document.getElementById('memberPhotoPreview').style.display = 'none';
+  document.getElementById('photoPlaceholder').style.display = 'block';
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  const res = await api('/api/stats');
+  if (!res.success) return;
+  const s = res.stats;
+
+  // Circle
+  const rate = s.attendance_rate;
+  const circ = 263.9;
+  const offset = circ - (rate / 100) * circ;
+  document.getElementById('circleProgress').style.strokeDashoffset = offset;
+  document.getElementById('circleText').textContent = `${rate}%`;
+
+  // Trend
+  const trend = document.getElementById('trendChart');
+  const tdata = s.trend || [];
+  const maxCount = Math.max(...tdata.map(t => t.count), 1);
+  trend.innerHTML = tdata.map(t => {
+    const h = Math.max((t.count / maxCount) * 80, 4);
+    const d = t.date?.slice(5);
+    return `<div class="trend-bar-wrap">
+      <div class="trend-bar" style="height:${h}px" data-count="${t.count} present"></div>
+      <span class="trend-label">${d}</span>
+    </div>`;
+  }).join('') || '<p style="color:var(--muted);font-size:13px;">No trend data yet</p>';
+
+  // Member progress
+  const prog = document.getElementById('memberProgress');
+  const members = s.member_stats || [];
+  if (!members.length) {
+    prog.innerHTML = `<p style="color:var(--muted);font-size:13px;">No data</p>`;
+    return;
+  }
+  prog.innerHTML = members.map(m => `
+    <div class="progress-item">
+      <div class="progress-header">
+        <span class="progress-name">${m.name} <span style="color:var(--muted);font-size:11px;font-family:var(--mono)">${m.department}</span></span>
+        <span class="progress-pct">${m.percentage}%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${m.percentage}%"></div>
+      </div>
+    </div>`).join('');
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory(days, btn=null) {
+  if (btn) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  const res = await api(`/api/attendance/history?days=${days}`);
+  const c = document.getElementById('historyTable');
+  const records = res.records || [];
+  if (!records.length) {
+    c.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>No records found</p></div>`;
+    return;
+  }
+  c.innerHTML = `<table class="log-table">
+    <thead><tr>
+      <th>Date</th><th>Name</th><th>Department</th><th>Check In</th><th>Check Out</th><th>Confidence</th>
+    </tr></thead>
+    <tbody>${records.map(r => `
+      <tr>
+        <td><span style="font-family:var(--mono);font-size:12px;">${r.date}</span></td>
+        <td><span style="font-weight:600;">${r.name}</span></td>
+        <td><span style="color:var(--muted);font-size:12px;">${r.department}</span></td>
+        <td><span class="time-chip">${r.check_in || '—'}</span></td>
+        <td><span class="time-chip">${r.check_out || '—'}</span></td>
+        <td>${r.confidence ? `<span class="badge badge-blue">${r.confidence}%</span>` : '—'}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateDate();
+checkModelStatus();
+loadDashboard();
+setInterval(checkModelStatus, 10000);
+</script>
+</body>
+</html>
