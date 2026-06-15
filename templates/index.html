@@ -1214,7 +1214,7 @@ async function loadDashboard() {
           <tr>
             <td>
               <div style="display:flex;align-items:center;gap:10px;">
-                ${r.photo_path ? `<img src="/uploads/${r.photo_path.split('/').pop()}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">` : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">${r.name[0]}</div>`}
+                ${r.photo_data ? `<img src="/uploads/photo/${r.member_id}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">` : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">${r.name[0]}</div>`}
                 <span style="font-weight:600;">${r.name}</span>
               </div>
             </td>
@@ -1442,7 +1442,7 @@ function renderResult(res) {
   const actionLabel = action === 'check_in' ? '✅ Checked In' : action === 'check_out' ? '🔒 Checked Out' : '⚠️ Already Complete';
   const cardClass = action === 'check_in' ? 'success' : action === 'check_out' ? '' : 'warning';
   const m = res.member;
-  const avatarSrc = m.photo_path ? `/uploads/${m.photo_path.split('/').pop()}` : null;
+  const avatarSrc = m.photo_data ? `/uploads/photo/${m.id}` : null;
 
   // Update scan zone with annotated image if available
   if (res.annotated_image) {
@@ -1502,7 +1502,7 @@ async function loadMembers() {
     return;
   }
   grid.innerHTML = res.members.map(m => {
-    const avatarSrc = m.photo_path ? `/uploads/${m.photo_path.split('/').pop()}` : null;
+    const avatarSrc = m.photo_data ? `/uploads/photo/${m.id}` : null;
     return `
       <div class="member-card">
         <button class="member-card-delete" onclick="deleteMember(${m.id}, '${m.name}')" title="Remove">✕</button>
@@ -1699,7 +1699,7 @@ async function loadMemberDateLookup() {
   }
 
   const { member, present, record, date: d } = res;
-  const avatarSrc = member.photo_path ? `/uploads/${member.photo_path.split('/').pop()}` : null;
+  const avatarSrc = member.photo_data ? `/uploads/photo/${member.id}` : null;
 
   let html = `<div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
     ${avatarSrc

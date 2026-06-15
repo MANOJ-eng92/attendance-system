@@ -1,13 +1,19 @@
-import sqlite3
 import os
-from datetime import datetime, date
+import psycopg2
+import psycopg2.extras
+from datetime import datetime, date, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'attendance.db')
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """
+    Returns a PostgreSQL connection with dict-like row access
+    (similar to sqlite3.Row via RealDictCursor).
+    """
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -15,11 +21,11 @@ def init_db():
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             employee_id TEXT UNIQUE NOT NULL,
             department TEXT DEFAULT 'General',
-            photo_path TEXT,
+            photo_data TEXT,
             label INTEGER UNIQUE NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             active INTEGER DEFAULT 1
@@ -28,21 +34,20 @@ def init_db():
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            member_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            member_id INTEGER NOT NULL REFERENCES members(id),
             date TEXT NOT NULL,
             check_in TEXT,
             check_out TEXT,
             status TEXT DEFAULT 'present',
             confidence REAL,
-            FOREIGN KEY (member_id) REFERENCES members(id),
             UNIQUE(member_id, date)
         )
     ''')
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             session_date TEXT NOT NULL,
             total_members INTEGER DEFAULT 0,
             present_count INTEGER DEFAULT 0,
@@ -53,50 +58,69 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def get_all_members():
     conn = get_db()
-    members = conn.execute(
-        'SELECT * FROM members WHERE active=1 ORDER BY name'
-    ).fetchall()
+    c = conn.cursor()
+    c.execute('SELECT * FROM members WHERE active=1 ORDER BY name')
+    members = c.fetchall()
     conn.close()
     return [dict(m) for m in members]
 
+
 def get_member_by_label(label):
     conn = get_db()
-    member = conn.execute(
-        'SELECT * FROM members WHERE label=?', (label,)
-    ).fetchone()
+    c = conn.cursor()
+    c.execute('SELECT * FROM members WHERE label=%s', (label,))
+    member = c.fetchone()
     conn.close()
     return dict(member) if member else None
 
-def add_member(name, employee_id, department, photo_path, label):
+
+def get_member_by_id(member_id):
     conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM members WHERE id=%s', (member_id,))
+    member = c.fetchone()
+    conn.close()
+    return dict(member) if member else None
+
+
+def add_member(name, employee_id, department, photo_data, label):
+    """
+    photo_data: base64-encoded string of the member's photo (or None).
+    """
+    conn = get_db()
+    c = conn.cursor()
     try:
-        conn.execute(
-            'INSERT INTO members (name, employee_id, department, photo_path, label) VALUES (?,?,?,?,?)',
-            (name, employee_id, department, photo_path, label)
+        c.execute(
+            'INSERT INTO members (name, employee_id, department, photo_data, label) VALUES (%s,%s,%s,%s,%s)',
+            (name, employee_id, department, photo_data, label)
         )
         conn.commit()
-        member = conn.execute('SELECT * FROM members WHERE employee_id=?', (employee_id,)).fetchone()
+        c.execute('SELECT * FROM members WHERE employee_id=%s', (employee_id,))
+        member = c.fetchone()
         conn.close()
         return dict(member)
-    except sqlite3.IntegrityError as e:
+    except psycopg2.IntegrityError:
+        conn.rollback()
         conn.close()
         raise ValueError(f"Member with employee_id '{employee_id}' already exists.")
 
+
 def mark_attendance(member_id, confidence):
     conn = get_db()
+    c = conn.cursor()
     today = date.today().isoformat()
     now = datetime.now().strftime('%H:%M:%S')
-    existing = conn.execute(
-        'SELECT * FROM attendance WHERE member_id=? AND date=?',
-        (member_id, today)
-    ).fetchone()
+
+    c.execute('SELECT * FROM attendance WHERE member_id=%s AND date=%s', (member_id, today))
+    existing = c.fetchone()
 
     if existing:
         if not existing['check_out']:
-            conn.execute(
-                'UPDATE attendance SET check_out=? WHERE member_id=? AND date=?',
+            c.execute(
+                'UPDATE attendance SET check_out=%s WHERE member_id=%s AND date=%s',
                 (now, member_id, today)
             )
             conn.commit()
@@ -105,62 +129,68 @@ def mark_attendance(member_id, confidence):
             conn.close()
             return 'already_complete', dict(existing)
     else:
-        conn.execute(
-            'INSERT INTO attendance (member_id, date, check_in, confidence) VALUES (?,?,?,?)',
+        c.execute(
+            'INSERT INTO attendance (member_id, date, check_in, confidence) VALUES (%s,%s,%s,%s)',
             (member_id, today, now, confidence)
         )
         conn.commit()
         action = 'check_in'
 
-    record = conn.execute(
-        'SELECT * FROM attendance WHERE member_id=? AND date=?',
-        (member_id, today)
-    ).fetchone()
+    c.execute('SELECT * FROM attendance WHERE member_id=%s AND date=%s', (member_id, today))
+    record = c.fetchone()
     conn.close()
     return action, dict(record)
 
+
 def get_attendance_today():
     conn = get_db()
+    c = conn.cursor()
     today = date.today().isoformat()
-    records = conn.execute('''
-        SELECT a.*, m.name, m.employee_id, m.department, m.photo_path
+    c.execute('''
+        SELECT a.*, m.name, m.employee_id, m.department, m.photo_data
         FROM attendance a
         JOIN members m ON a.member_id = m.id
-        WHERE a.date = ?
+        WHERE a.date = %s
         ORDER BY a.check_in DESC
-    ''', (today,)).fetchall()
+    ''', (today,))
+    records = c.fetchall()
     conn.close()
     return [dict(r) for r in records]
 
+
 def get_attendance_stats():
     conn = get_db()
+    c = conn.cursor()
     today = date.today().isoformat()
-    total_members = conn.execute('SELECT COUNT(*) FROM members WHERE active=1').fetchone()[0]
-    present_today = conn.execute(
-        'SELECT COUNT(*) FROM attendance WHERE date=?', (today,)
-    ).fetchone()[0]
 
-    # Overall attendance percentage per member
-    member_stats = conn.execute('''
+    c.execute('SELECT COUNT(*) AS count FROM members WHERE active=1')
+    total_members = c.fetchone()['count']
+
+    c.execute('SELECT COUNT(*) AS count FROM attendance WHERE date=%s', (today,))
+    present_today = c.fetchone()['count']
+
+    c.execute('''
         SELECT m.name, m.employee_id, m.department,
                COUNT(a.id) as days_present,
                (SELECT COUNT(DISTINCT date) FROM attendance) as total_days,
-               ROUND(COUNT(a.id) * 100.0 / MAX((SELECT COUNT(DISTINCT date) FROM attendance), 1), 1) as percentage
+               ROUND(COUNT(a.id) * 100.0 / GREATEST((SELECT COUNT(DISTINCT date) FROM attendance), 1), 1) as percentage
         FROM members m
         LEFT JOIN attendance a ON m.id = a.member_id
         WHERE m.active=1
-        GROUP BY m.id
+        GROUP BY m.id, m.name, m.employee_id, m.department
         ORDER BY percentage DESC
-    ''').fetchall()
+    ''')
+    member_stats = c.fetchall()
 
-    # Last 7 days trend
-    trend = conn.execute('''
+    cutoff = (date.today() - timedelta(days=6)).isoformat()
+    c.execute('''
         SELECT date, COUNT(*) as count
         FROM attendance
-        WHERE date >= date('now', '-6 days')
+        WHERE date >= %s
         GROUP BY date
         ORDER BY date
-    ''').fetchall()
+    ''', (cutoff,))
+    trend = c.fetchall()
 
     conn.close()
     return {
@@ -172,43 +202,56 @@ def get_attendance_stats():
         'trend': [dict(r) for r in trend]
     }
 
+
 def get_next_label():
     conn = get_db()
-    max_label = conn.execute('SELECT MAX(label) FROM members').fetchone()[0]
+    c = conn.cursor()
+    c.execute('SELECT MAX(label) AS max_label FROM members')
+    max_label = c.fetchone()['max_label']
     conn.close()
     return (max_label or 0) + 1
 
+
 def delete_member(member_id):
     conn = get_db()
-    conn.execute('UPDATE members SET active=0 WHERE id=?', (member_id,))
+    c = conn.cursor()
+    c.execute('UPDATE members SET active=0 WHERE id=%s', (member_id,))
     conn.commit()
     conn.close()
 
+
 def get_attendance_history(days=30):
     conn = get_db()
-    records = conn.execute('''
+    c = conn.cursor()
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    c.execute('''
         SELECT a.date, a.check_in, a.check_out, a.confidence,
                m.name, m.employee_id, m.department
         FROM attendance a
         JOIN members m ON a.member_id = m.id
-        WHERE a.date >= date('now', ?)
+        WHERE a.date >= %s
         ORDER BY a.date DESC, a.check_in DESC
-    ''', (f'-{days} days',)).fetchall()
+    ''', (cutoff,))
+    records = c.fetchall()
     conn.close()
     return [dict(r) for r in records]
 
+
 def get_attendance_by_date_range(start_date, end_date):
     conn = get_db()
-    records = conn.execute('''
+    c = conn.cursor()
+    c.execute('''
         SELECT a.date, a.check_in, a.check_out, a.confidence, a.status,
                m.name, m.employee_id, m.department
         FROM attendance a
         JOIN members m ON a.member_id = m.id
-        WHERE a.date >= ? AND a.date <= ?
+        WHERE a.date >= %s AND a.date <= %s
         ORDER BY a.date DESC, m.name ASC
-    ''', (start_date, end_date)).fetchall()
+    ''', (start_date, end_date))
+    records = c.fetchall()
     conn.close()
     return [dict(r) for r in records]
+
 
 def bulk_add_members(rows):
     """
@@ -218,10 +261,12 @@ def bulk_add_members(rows):
     failed (e.g. duplicate employee_id or missing required fields).
     """
     conn = get_db()
+    c = conn.cursor()
     added = []
     skipped = []
 
-    max_label = conn.execute('SELECT MAX(label) FROM members').fetchone()[0] or 0
+    c.execute('SELECT MAX(label) AS max_label FROM members')
+    max_label = c.fetchone()['max_label'] or 0
 
     for row in rows:
         name = (row.get('name') or '').strip()
@@ -232,21 +277,21 @@ def bulk_add_members(rows):
             skipped.append({'row': row, 'reason': 'Missing name or employee_id'})
             continue
 
-        existing = conn.execute(
-            'SELECT id FROM members WHERE employee_id=?', (employee_id,)
-        ).fetchone()
+        c.execute('SELECT id FROM members WHERE employee_id=%s', (employee_id,))
+        existing = c.fetchone()
         if existing:
             skipped.append({'row': row, 'reason': f"Employee ID '{employee_id}' already exists"})
             continue
 
         max_label += 1
         try:
-            conn.execute(
-                'INSERT INTO members (name, employee_id, department, photo_path, label) VALUES (?,?,?,?,?)',
+            c.execute(
+                'INSERT INTO members (name, employee_id, department, photo_data, label) VALUES (%s,%s,%s,%s,%s)',
                 (name, employee_id, department, None, max_label)
             )
             added.append({'name': name, 'employee_id': employee_id, 'department': department})
-        except sqlite3.IntegrityError as e:
+        except psycopg2.IntegrityError as e:
+            conn.rollback()
             max_label -= 1
             skipped.append({'row': row, 'reason': str(e)})
 
@@ -254,41 +299,45 @@ def bulk_add_members(rows):
     conn.close()
     return added, skipped
 
+
 def get_attendance_by_date(target_date):
     """
     Return attendance records (present members) for a specific date,
     plus a list of members who were absent on that date.
     """
     conn = get_db()
+    c = conn.cursor()
 
-    present = conn.execute('''
-        SELECT a.*, m.name, m.employee_id, m.department, m.photo_path
+    c.execute('''
+        SELECT a.*, m.name, m.employee_id, m.department, m.photo_data
         FROM attendance a
         JOIN members m ON a.member_id = m.id
-        WHERE a.date = ?
+        WHERE a.date = %s
         ORDER BY m.name ASC
-    ''', (target_date,)).fetchall()
+    ''', (target_date,))
+    present = c.fetchall()
 
     present_ids = [r['member_id'] for r in present]
 
     if present_ids:
-        placeholders = ','.join('?' * len(present_ids))
-        absent = conn.execute(f'''
-            SELECT id, name, employee_id, department, photo_path
+        c.execute('''
+            SELECT id, name, employee_id, department, photo_data
             FROM members
-            WHERE active=1 AND id NOT IN ({placeholders})
+            WHERE active=1 AND id != ALL(%s)
             ORDER BY name ASC
-        ''', present_ids).fetchall()
+        ''', (present_ids,))
     else:
-        absent = conn.execute('''
-            SELECT id, name, employee_id, department, photo_path
+        c.execute('''
+            SELECT id, name, employee_id, department, photo_data
             FROM members
             WHERE active=1
             ORDER BY name ASC
-        ''').fetchall()
+        ''')
+    absent = c.fetchall()
 
     conn.close()
     return [dict(r) for r in present], [dict(r) for r in absent]
+
 
 def get_member_attendance_on_date(member_id, target_date):
     """
@@ -297,18 +346,17 @@ def get_member_attendance_on_date(member_id, target_date):
     Also returns basic member info regardless.
     """
     conn = get_db()
+    c = conn.cursor()
 
-    member = conn.execute(
-        'SELECT * FROM members WHERE id=?', (member_id,)
-    ).fetchone()
+    c.execute('SELECT * FROM members WHERE id=%s', (member_id,))
+    member = c.fetchone()
 
     if not member:
         conn.close()
         return None, None
 
-    record = conn.execute('''
-        SELECT * FROM attendance WHERE member_id=? AND date=?
-    ''', (member_id, target_date)).fetchone()
+    c.execute('SELECT * FROM attendance WHERE member_id=%s AND date=%s', (member_id, target_date))
+    record = c.fetchone()
 
     conn.close()
     return dict(member), (dict(record) if record else None)

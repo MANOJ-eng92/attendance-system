@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template_string, Response
+from flask import Flask, request, jsonify, render_template_string, Response
 import os
 import sys
 import base64
-import uuid
 import csv
 import io
 from datetime import datetime, date
@@ -13,7 +12,8 @@ from database.db import (
     get_attendance_today, get_attendance_stats, get_next_label,
     delete_member, get_attendance_history, get_member_by_label,
     get_attendance_by_date_range, bulk_add_members,
-    get_attendance_by_date, get_member_attendance_on_date
+    get_attendance_by_date, get_member_attendance_on_date,
+    get_member_by_id
 )
 from models.face_engine import (
     recognize_face, train_model, get_annotated_image,
@@ -23,9 +23,6 @@ from models.face_engine import (
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-
 # ─── Serve Frontend ────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -34,9 +31,14 @@ def index():
     with open(template_path, 'r', encoding='utf-8') as f:
         return f.read()
 
-@app.route('/uploads/<filename>')
-def serve_upload(filename):
-    return send_from_directory(UPLOADS_DIR, filename)
+@app.route('/uploads/photo/<int:member_id>')
+def serve_member_photo(member_id):
+    """Serve a member's photo, stored as base64 in the database."""
+    member = get_member_by_id(member_id)
+    if not member or not member.get('photo_data'):
+        return '', 404
+    photo_bytes = base64.b64decode(member['photo_data'])
+    return Response(photo_bytes, mimetype='image/jpeg')
 
 # ─── Member Management ─────────────────────────────────────────────────────────
 
@@ -62,10 +64,6 @@ def api_add_member():
         if photo.filename == '':
             return jsonify({'success': False, 'error': 'No photo selected.'}), 400
 
-        # Save photo
-        ext = os.path.splitext(photo.filename)[1].lower() or '.jpg'
-        filename = f"{employee_id}_{uuid.uuid4().hex[:8]}{ext}"
-        photo_path = os.path.join(UPLOADS_DIR, filename)
         photo_bytes = photo.read()
 
         # Validate face in photo
@@ -73,11 +71,11 @@ def api_add_member():
         if not faces:
             return jsonify({'success': False, 'error': 'No face detected in the uploaded photo. Please use a clear frontal face photo.'}), 400
 
-        with open(photo_path, 'wb') as f:
-            f.write(photo_bytes)
+        # Store photo as base64 text in the database (persists across restarts)
+        photo_data = base64.b64encode(photo_bytes).decode('ascii')
 
         label = get_next_label()
-        member = add_member(name, employee_id, department, photo_path, label)
+        member = add_member(name, employee_id, department, photo_data, label)
 
         # Retrain model
         success, msg = train_model()
@@ -168,7 +166,7 @@ def api_export_members():
             m.get('name', ''),
             m.get('employee_id', ''),
             m.get('department', ''),
-            'Yes' if m.get('photo_path') else 'No',
+            'Yes' if m.get('photo_data') else 'No',
             m.get('created_at', '')
         ])
 
@@ -380,7 +378,10 @@ def api_train():
     success, msg = train_model()
     return jsonify({'success': success, 'message': msg})
 
+# Initialize database and train face recognition model at startup
+init_db()
+train_model()
+
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 5050))
     app.run(debug=False, host='0.0.0.0', port=port)
