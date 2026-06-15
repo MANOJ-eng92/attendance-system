@@ -60,25 +60,22 @@ def extract_faces_from_bytes(img_bytes):
 
 def train_model():
     """Train the LBPH model from all member photos."""
+    import base64
     members = get_all_members()
     faces_data = []
     labels_data = []
 
-    UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
-
     for member in members:
-        photo_path = member.get('photo_path', '')
-        if not photo_path:
+        photo_data = member.get('photo_data', '')
+        if not photo_data:
             continue
 
-        full_path = os.path.join(UPLOADS_DIR, os.path.basename(photo_path))
-        if not os.path.exists(full_path):
-            full_path = photo_path
-
-        if not os.path.exists(full_path):
+        try:
+            photo_bytes = base64.b64decode(photo_data)
+        except Exception:
             continue
 
-        face_data = extract_faces_from_image(full_path)
+        img, face_data = extract_faces_from_bytes(photo_bytes)
         if face_data:
             roi, x, y, w, h = face_data[0]
             faces_data.append(roi)
