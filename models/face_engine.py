@@ -7,10 +7,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from database.db import get_all_members
 
+# Load cascade only once at module level (lightweight XML, not a model)
 CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
 face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
 
-# Cache to avoid reloading model on every scan
+# In-memory cache — avoids reloading model from DB on every request
 _recognizer_cache = None
 _labels_cache = None
 
@@ -104,7 +105,7 @@ def train_model():
     labels_bytes = pickle.dumps({m['label']: m['name'] for m in members})
     save_model_to_db(model_bytes, labels_bytes)
 
-    # Clear cache so next scan loads fresh model
+    # Clear cache so next recognition loads fresh model
     clear_recognizer_cache()
 
     return True, f"Model trained with {len(faces_data)} faces."
@@ -129,7 +130,7 @@ def load_recognizer():
 
 
 def get_recognizer():
-    """Return cached recognizer, loading from DB if needed."""
+    """Return cached recognizer, loading from DB only if not already cached."""
     global _recognizer_cache, _labels_cache
     if _recognizer_cache is None:
         _recognizer_cache, _labels_cache = load_recognizer()

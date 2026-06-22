@@ -263,10 +263,6 @@ def api_attendance_today():
 
 @app.route('/api/attendance/by-date', methods=['GET'])
 def api_attendance_by_date():
-    """
-    Get attendance for ALL members on a specific date.
-    Query params: date (YYYY-MM-DD), defaults to today.
-    """
     try:
         date_str = request.args.get('date', '').strip()
         target_date = date.fromisoformat(date_str) if date_str else date.today()
@@ -288,10 +284,6 @@ def api_attendance_by_date():
 
 @app.route('/api/attendance/member/<int:member_id>', methods=['GET'])
 def api_member_attendance_on_date(member_id):
-    """
-    Check a specific member's attendance status on a specific date.
-    Query params: date (YYYY-MM-DD), defaults to today.
-    """
     try:
         date_str = request.args.get('date', '').strip()
         target_date = date.fromisoformat(date_str) if date_str else date.today()
@@ -321,12 +313,6 @@ def api_attendance_history():
 
 @app.route('/api/attendance/export', methods=['GET'])
 def api_export_attendance():
-    """
-    Export attendance records as a CSV file for a custom date range.
-    Query params:
-      start (YYYY-MM-DD) - defaults to 30 days ago
-      end   (YYYY-MM-DD) - defaults to today
-    """
     try:
         end_str = request.args.get('end', '').strip()
         start_str = request.args.get('start', '').strip()
@@ -379,9 +365,10 @@ def api_train():
     success, msg = train_model()
     return jsonify({'success': success, 'message': msg})
 
-# Initialize database and train face recognition model at startup
+# ─── Startup ───────────────────────────────────────────────────────────────────
+# Only init the database schema — do NOT train model at startup.
+# Model loads lazily on first recognition request, saving ~200MB RAM on boot.
 init_db()
-train_model()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
