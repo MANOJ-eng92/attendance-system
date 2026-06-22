@@ -361,6 +361,7 @@ def get_member_attendance_on_date(member_id, target_date):
     conn.close()
     return dict(member), (dict(record) if record else None)
 
+
 def save_model_to_db(model_data, labels_data):
     """Save trained model binary data to database."""
     conn = get_db()

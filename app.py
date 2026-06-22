@@ -194,12 +194,9 @@ def api_members_import_template():
 
 # ─── Attendance ─────────────────────────────────────────────────────────────────
 
-
 @app.route('/api/recognize', methods=['POST'])
 def api_recognize():
     try:
-        if not model_exists():          # ← ADD THIS
-            train_model()               # ← ADD THIS
         if not model_exists():
             return jsonify({'success': False, 'error': 'No trained model found. Please add members first.'}), 400
 
@@ -384,11 +381,7 @@ def api_train():
 
 # Initialize database and train face recognition model at startup
 init_db()
-try:
-    success, msg = train_model()
-    print(f"Startup training: {msg}")
-except Exception as e:
-    print(f"Startup training failed: {e}")
+train_model()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
