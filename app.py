@@ -95,6 +95,7 @@ def api_add_member():
 def api_delete_member(member_id):
     try:
         delete_member(member_id)
+        train_model()
         return jsonify({'success': True, 'message': 'Member removed successfully.'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -196,6 +197,11 @@ def api_members_import_template():
 @app.route('/api/recognize', methods=['POST'])
 def api_recognize():
     try:
+@app.route('/api/recognize', methods=['POST'])
+def api_recognize():
+    try:
+        if not model_exists():          # ← ADD THIS
+            train_model()               # ← ADD THIS
         if not model_exists():
             return jsonify({'success': False, 'error': 'No trained model found. Please add members first.'}), 400
 
@@ -380,7 +386,11 @@ def api_train():
 
 # Initialize database and train face recognition model at startup
 init_db()
-train_model()
+try:
+    success, msg = train_model()
+    print(f"Startup training: {msg}")
+except Exception as e:
+    print(f"Startup training failed: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

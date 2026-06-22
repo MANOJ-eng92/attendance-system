@@ -59,8 +59,11 @@ def extract_faces_from_bytes(img_bytes):
     return img, result
 
 def train_model():
-    """Train the LBPH model from all member photos."""
+    """Train the LBPH model from all member photos and save to DB."""
     import base64
+    import pickle
+    from database.db import get_all_members, save_model_to_db
+
     members = get_all_members()
     faces_data = []
     labels_data = []
@@ -69,12 +72,10 @@ def train_model():
         photo_data = member.get('photo_data', '')
         if not photo_data:
             continue
-
         try:
             photo_bytes = base64.b64decode(photo_data)
         except Exception:
             continue
-
         img, face_data = extract_faces_from_bytes(photo_bytes)
         if face_data:
             roi, x, y, w, h = face_data[0]
@@ -84,17 +85,17 @@ def train_model():
     if len(faces_data) < 1:
         return False, "No training data available. Add members with photos first."
 
-    recognizer = cv2.face.LBPHFaceRecognizer_create(
-        radius=2,
-        neighbors=16,
-        grid_x=8,
-        grid_y=8
-    )
+    recognizer = cv2.face.LBPHFaceRecognizer_create(radius=2, neighbors=16, grid_x=8, grid_y=8)
     recognizer.train(faces_data, np.array(labels_data))
-    recognizer.save(MODEL_PATH)
 
-    with open(LABELS_PATH, 'wb') as f:
-        pickle.dump({m['label']: m['name'] for m in members}, f)
+    # Save to temp file then read as bytes → store in DB
+    tmp_path = '/tmp/face_model_tmp.yml'
+    recognizer.save(tmp_path)
+    with open(tmp_path, 'rb') as f:
+        model_bytes = f.read()
+
+    labels_bytes = pickle.dumps({m['label']: m['name'] for m in members})
+    save_model_to_db(model_bytes, labels_bytes)
 
     return True, f"Model trained with {len(faces_data)} faces."
 
@@ -102,16 +103,19 @@ def load_recognizer():
     """Load the trained recognizer."""
     if not os.path.exists(MODEL_PATH):
         return None
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read(MODEL_PATH)
-    return recognizer
+    try:
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        recognizer.read(MODEL_PATH)
+        return recognizer
+    except Exception:
+        return None
 
 def recognize_face(img_bytes, threshold=80):
     """
     Recognize face(s) in image bytes.
     Returns list of dicts with label, confidence, bbox.
     """
-    recognizer = load_recognizer()
+    recognizer,labels = load_recognizer()
     if recognizer is None:
         return None, "Model not trained yet. Please add members and train."
 

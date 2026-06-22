@@ -360,3 +360,36 @@ def get_member_attendance_on_date(member_id, target_date):
 
     conn.close()
     return dict(member), (dict(record) if record else None)
+
+def save_model_to_db(model_data, labels_data):
+    """Save trained model binary data to database."""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS model_store (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            model_data BYTEA,
+            labels_data BYTEA,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('DELETE FROM model_store')
+    c.execute('INSERT INTO model_store (id, model_data, labels_data) VALUES (1, %s, %s)',
+              (psycopg2.Binary(model_data), psycopg2.Binary(labels_data)))
+    conn.commit()
+    conn.close()
+
+
+def load_model_from_db():
+    """Load trained model binary data from database."""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('SELECT model_data, labels_data FROM model_store WHERE id = 1')
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return bytes(row['model_data']), bytes(row['labels_data'])
+        return None, None
+    except Exception:
+        return None, None
