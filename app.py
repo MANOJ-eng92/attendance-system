@@ -194,9 +194,7 @@ def api_members_import_template():
 
 # ─── Attendance ─────────────────────────────────────────────────────────────────
 
-@app.route('/api/recognize', methods=['POST'])
-def api_recognize():
-    try:
+
 @app.route('/api/recognize', methods=['POST'])
 def api_recognize():
     try:
