@@ -368,7 +368,7 @@ def save_model_to_db(model_data, labels_data):
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS model_store (
-            id INTEGER PRIMARY KEY DEFAULT 1,
+            id INTEGER PRIMARY KEY,
             model_data BYTEA,
             labels_data BYTEA,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
