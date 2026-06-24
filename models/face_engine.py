@@ -85,7 +85,19 @@ def train_model():
         img, face_data = extract_faces_from_bytes(photo_bytes)
         if face_data:
             roi, x, y, w, h = face_data[0]
+            # Original
             faces_data.append(roi)
+            labels_data.append(member['label'])
+            # Flipped horizontally
+            faces_data.append(cv2.flip(roi, 1))
+            labels_data.append(member['label'])
+            # Slightly brighter
+            bright = cv2.convertScaleAbs(roi, alpha=1.2, beta=20)
+            faces_data.append(bright)
+            labels_data.append(member['label'])
+            # Slightly darker
+            dark = cv2.convertScaleAbs(roi, alpha=0.8, beta=-20)
+            faces_data.append(dark)
             labels_data.append(member['label'])
 
     if len(faces_data) < 1:
@@ -151,7 +163,7 @@ def model_exists():
     return model_bytes is not None
 
 
-def recognize_face(img_bytes, threshold=80):
+def recognize_face(img_bytes, threshold=50):
     """Recognize face(s) in image bytes."""
     recognizer, labels = get_recognizer()
     if recognizer is None:
