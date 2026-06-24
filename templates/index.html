@@ -961,15 +961,50 @@
             </div>
             <div class="form-group full">
               <label class="form-label">Profile Photo *</label>
-              <div class="photo-upload-zone" onclick="document.getElementById('memberPhoto').click()" id="photoZone">
-                <div id="photoPlaceholder">
-                  <div class="up-icon">📸</div>
-                  <div class="up-text">Click to upload a clear frontal face photo</div>
-                  <div class="up-text" style="font-size:11px;margin-top:4px;opacity:0.6;">JPG, PNG — Face should be well-lit and centered</div>
-                </div>
-                <img id="memberPhotoPreview" class="photo-preview-img" style="display:none" alt="Preview">
+              <!-- Tab switcher -->
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <button type="button" onclick="switchMemberPhotoTab('upload')" id="tabMemberUpload"
+                  style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#000;font-size:13px;cursor:pointer;">
+                  📁 Upload Photo
+                </button>
+                <button type="button" onclick="switchMemberPhotoTab('camera')" id="tabMemberCamera"
+                  style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;">
+                  📷 Use Camera
+                </button>
               </div>
-              <input type="file" id="memberPhoto" class="file-input" accept="image/*" onchange="handleMemberPhoto(event)">
+
+              <!-- Upload panel -->
+              <div id="memberUploadPanel">
+                <div class="photo-upload-zone" onclick="document.getElementById('memberPhoto').click()" id="photoZone">
+                  <div id="photoPlaceholder">
+                    <div class="up-icon">📸</div>
+                    <div class="up-text">Click to upload a clear frontal face photo</div>
+                    <div class="up-text" style="font-size:11px;margin-top:4px;opacity:0.6;">JPG, PNG — Face should be well-lit and centered</div>
+                  </div>
+                  <img id="memberPhotoPreview" class="photo-preview-img" style="display:none" alt="Preview">
+                </div>
+                <input type="file" id="memberPhoto" class="file-input" accept="image/*" onchange="handleMemberPhoto(event)">
+              </div>
+
+              <!-- Camera panel -->
+              <div id="memberCameraPanel" style="display:none;">
+                <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;min-height:220px;">
+                  <video id="memberCamVideo" autoplay playsinline style="width:100%;max-height:280px;display:block;"></video>
+                  <canvas id="memberCamCanvas" style="display:none;"></canvas>
+                  <img id="memberCamPreview" style="display:none;width:100%;max-height:280px;object-fit:cover;border-radius:10px;" alt="Captured">
+                  <div id="memberCamStatus" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#0f0;font-size:11px;padding:3px 10px;border-radius:20px;">● LIVE</div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                  <button type="button" onclick="captureMemberPhoto()" id="memberCaptureBtn"
+                    style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#000;font-size:14px;cursor:pointer;">
+                    📸 Capture Photo
+                  </button>
+                  <button type="button" onclick="retakeMemberPhoto()" id="memberRetakeBtn" style="display:none;
+                    flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;cursor:pointer;">
+                    🔄 Retake
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1739,6 +1774,88 @@ function handleMemberPhoto(e) {
   reader.readAsDataURL(file);
 }
 
+let memberCamStream = null;
+
+function switchMemberPhotoTab(tab) {
+  const uploadBtn = document.getElementById('tabMemberUpload');
+  const cameraBtn = document.getElementById('tabMemberCamera');
+  const uploadPanel = document.getElementById('memberUploadPanel');
+  const cameraPanel = document.getElementById('memberCameraPanel');
+
+  if (tab === 'upload') {
+    uploadBtn.style.background = 'var(--accent)';
+    uploadBtn.style.color = '#000';
+    cameraBtn.style.background = 'transparent';
+    cameraBtn.style.color = 'var(--text)';
+    uploadPanel.style.display = 'block';
+    cameraPanel.style.display = 'none';
+    stopMemberCamera();
+  } else {
+    cameraBtn.style.background = 'var(--accent)';
+    cameraBtn.style.color = '#000';
+    uploadBtn.style.background = 'transparent';
+    uploadBtn.style.color = 'var(--text)';
+    uploadPanel.style.display = 'none';
+    cameraPanel.style.display = 'block';
+    startMemberCamera();
+  }
+}
+
+async function startMemberCamera() {
+  try {
+    memberCamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    const video = document.getElementById('memberCamVideo');
+    video.srcObject = memberCamStream;
+    video.style.display = 'block';
+    document.getElementById('memberCamPreview').style.display = 'none';
+    document.getElementById('memberCaptureBtn').style.display = 'block';
+    document.getElementById('memberRetakeBtn').style.display = 'none';
+    document.getElementById('memberCamStatus').style.display = 'block';
+  } catch (err) {
+    toast('Camera access denied. Please allow camera permissions.', 'error');
+  }
+}
+
+function stopMemberCamera() {
+  if (memberCamStream) {
+    memberCamStream.getTracks().forEach(t => t.stop());
+    memberCamStream = null;
+  }
+}
+
+function captureMemberPhoto() {
+  const video = document.getElementById('memberCamVideo');
+  const canvas = document.getElementById('memberCamCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  // Show preview
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  const preview = document.getElementById('memberCamPreview');
+  preview.src = dataUrl;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+  document.getElementById('memberCamStatus').style.display = 'none';
+  document.getElementById('memberCaptureBtn').style.display = 'none';
+  document.getElementById('memberRetakeBtn').style.display = 'block';
+
+  // Convert to File object
+  canvas.toBlob((blob) => {
+    memberPhotoFile = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+  }, 'image/jpeg', 0.9);
+}
+
+function retakeMemberPhoto() {
+  memberPhotoFile = null;
+  const video = document.getElementById('memberCamVideo');
+  video.style.display = 'block';
+  document.getElementById('memberCamPreview').style.display = 'none';
+  document.getElementById('memberCamStatus').style.display = 'block';
+  document.getElementById('memberCaptureBtn').style.display = 'block';
+  document.getElementById('memberRetakeBtn').style.display = 'none';
+}
+
 async function submitAddMember() {
   const name = document.getElementById('newName').value.trim();
   const empId = document.getElementById('newEmpId').value.trim();
@@ -1781,6 +1898,8 @@ function clearAddForm() {
   memberPhotoFile = null;
   document.getElementById('memberPhotoPreview').style.display = 'none';
   document.getElementById('photoPlaceholder').style.display = 'block';
+  stopMemberCamera();
+  switchMemberPhotoTab('upload');
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
