@@ -817,6 +817,13 @@
         </div>
       </div>
 
+      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button id="retrainBtn" onclick="retrainModel()"
+          style="padding:8px 18px; border-radius:8px; border:none; background:#6c63ff; color:#fff; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+          🔄 Retrain Model
+        </button>
+      </div>
+
       <div class="card">
         <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
           <span>Today's Attendance Log</span>
@@ -1890,6 +1897,31 @@ async function submitAddMember() {
   }
 }
 
+async function retrainModel() {
+  const btn = document.getElementById('retrainBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Training...';
+  try {
+    const res = await fetch('/api/train', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      btn.innerHTML = '✅ ' + data.message;
+      btn.style.background = '#22c55e';
+    } else {
+      btn.innerHTML = '❌ Failed: ' + data.message;
+      btn.style.background = '#ef4444';
+    }
+  } catch (e) {
+    btn.innerHTML = '❌ Error - try again';
+    btn.style.background = '#ef4444';
+  }
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Retrain Model';
+    btn.style.background = '#6c63ff';
+  }, 4000);
+}
+
 function clearAddForm() {
   document.getElementById('newName').value = '';
   document.getElementById('newEmpId').value = '';
@@ -1978,8 +2010,30 @@ async function loadHistory(days, btn=null) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 updateDate();
-checkModelStatus();
 loadDashboard();
+
+// Auto-retrain silently on page load so model is always ready
+(async function autoRetrain() {
+  try {
+    const res = await fetch('/api/train', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      console.log('Auto-retrain: ' + data.message);
+      const btn = document.getElementById('retrainBtn');
+      if (btn) {
+        btn.innerHTML = '✅ Model Ready';
+        btn.style.background = '#22c55e';
+        setTimeout(() => {
+          btn.innerHTML = '🔄 Retrain Model';
+          btn.style.background = '#6c63ff';
+        }, 3000);
+      }
+    }
+  } catch(e) {
+    console.log('Auto-retrain failed:', e);
+  }
+})();
+
 setInterval(checkModelStatus, 10000);
 </script>
 </body>
