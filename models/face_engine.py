@@ -145,8 +145,10 @@ def model_exists():
         return False
 
 
-def recognize_face(img_bytes, threshold=50):
-    """Recognize face(s) in image bytes."""
+def recognize_face(img_bytes, threshold=100):
+    """Recognize face(s) in image bytes.
+    LBPH: lower raw confidence = better match. threshold=100 means accept if raw < 100.
+    """
     recognizer, labels = get_recognizer()
     if recognizer is None:
         return None, "Model not trained yet. Please add members and train."
@@ -160,11 +162,12 @@ def recognize_face(img_bytes, threshold=50):
     results = []
     for (roi, x, y, w, h) in face_data:
         label, confidence = recognizer.predict(roi)
-        similarity = max(0, 100 - confidence)
-        recognized = similarity >= (100 - threshold)
+        # LBPH: 0 = perfect, higher = worse match. Accept if below threshold.
+        recognized = confidence < threshold
+        display_confidence = round(max(0, 100 - confidence), 1)
         results.append({
             'label': label if recognized else -1,
-            'confidence': round(similarity, 1),
+            'confidence': display_confidence,
             'raw_confidence': round(confidence, 1),
             'recognized': recognized,
             'bbox': {'x': int(x), 'y': int(y), 'w': int(w), 'h': int(h)}
